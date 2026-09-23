@@ -1,0 +1,57 @@
+Next development order
+
+1. Pitch accuracy & stability — NEXT
+
+Reduce wrong-note jumps.
+Improve detection of fast vocal changes.
+Better handling of vibrato.
+Reduce octave errors.
+Improve low/high vocal detection.
+
+2. MIDI response
+
+Adjustable note stability.
+Adjustable note-off delay.
+MIDI channel 1–16.
+Better velocity response.
+Prevent stuck notes.
+
+3. User controls
+Create a compact settings section:
+
+Voice Threshold
+Pitch Confidence
+Note Stability
+Note-Off Delay
+MIDI Channel
+Velocity Mode
+
+4. Pitch range
+Presets such as:
+
+Bass
+Low Male
+Male
+Female
+High Female
+Custom
+
+5. Musical features
+After the basic tracker is solid:
+
+Scale/key locking
+Quantize to scale
+Transpose
+Octave shift
+Monophonic/polyphonic mode later
+
+6. Product polish
+
+OFFOR branding
+Presets
+Settings persistence
+CPU optimization
+Plugin validation
+Installer
+Manual
+Demo/testing
