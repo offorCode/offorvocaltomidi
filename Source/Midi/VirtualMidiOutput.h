@@ -3,6 +3,8 @@
 #include <JuceHeader.h>
 #include "teVirtualMIDI.h"
 
+#include <mutex>
+
 class VirtualMidiOutput
     : private juce::Thread
 {
@@ -62,6 +64,8 @@ private:
     LPVM_MIDI_PORT midiPort = nullptr;
 
     std::atomic<bool> portOpen { false };
+
+    std::mutex midiPortMutex;
 
     // ==========================================================
     // LIFETIME

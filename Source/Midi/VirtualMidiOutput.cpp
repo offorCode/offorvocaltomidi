@@ -31,13 +31,20 @@ bool VirtualMidiOutput::open(const juce::String& portName)
 
     if (portName.isEmpty())
     {
-        
+        std::cerr
+            << "[OFFOR MIDI] Cannot open MIDI port: empty name."
+            << std::endl;
 
         return false;
     }
 
     const std::wstring wideName =
         portName.toWideCharPointer();
+
+    std::cout
+        << "[OFFOR MIDI] Creating virtual MIDI port: "
+        << portName.toStdString()
+        << std::endl;
 
     midiPort =
         virtualMIDICreatePortEx2(
@@ -51,8 +58,18 @@ bool VirtualMidiOutput::open(const juce::String& portName)
     {
         const DWORD errorCode = GetLastError();
 
+        std::cerr
+            << "[OFFOR MIDI] virtualMIDICreatePortEx2 FAILED. "
+            << "GetLastError = "
+            << errorCode
+            << std::endl;
+
         return false;
     }
+
+    std::cout
+        << "[OFFOR MIDI] Virtual MIDI port created successfully."
+        << std::endl;
 
     // Clear any stale events from a previous session.
     midiFifo.reset();
@@ -64,7 +81,10 @@ bool VirtualMidiOutput::open(const juce::String& portName)
     // Start the worker thread.
     startThread();
 
-    
+    std::cout
+        << "[OFFOR MIDI] MIDI worker thread started."
+        << std::endl;
+
     return true;
 }
 
@@ -74,37 +94,63 @@ bool VirtualMidiOutput::open(const juce::String& portName)
 
 void VirtualMidiOutput::close()
 {
-    const bool wasOpen =
-        portOpen.exchange(
-            false,
-            std::memory_order_acq_rel);
+    // ========================================================
+    // STOP ACCEPTING NEW EVENTS
+    // ========================================================
 
-    // Stop worker thread first.
-    //
-    // This is extremely important:
-    //
-    // We must guarantee that the worker is no longer inside
-    // virtualMIDISendData() before closing midiPort.
-    //
+    portOpen.store(
+        false,
+        std::memory_order_release);
+
+    // ========================================================
+    // STOP WORKER
+    // ========================================================
+
     if (isThreadRunning())
     {
+        std::cout
+            << "[OFFOR MIDI] Stopping MIDI worker thread..."
+            << std::endl;
+
         signalThreadShouldExit();
 
-        stopThread(2000);
+        // IMPORTANT:
+        // Wait until the worker has completely exited.
+        //
+        // The MIDI port must NOT be closed while the worker
+        // could still call virtualMIDISendData().
+        stopThread(-1);
+
+        std::cout
+            << "[OFFOR MIDI] MIDI worker thread stopped."
+            << std::endl;
     }
+
+    // ========================================================
+    // NOW IT IS SAFE TO CLOSE THE PORT
+    // ========================================================
 
     if (midiPort != nullptr)
     {
-        virtualMIDIClosePort(midiPort);
+        std::cout
+            << "[OFFOR MIDI] Closing virtual MIDI port..."
+            << std::endl;
+
+        virtualMIDIClosePort(
+            midiPort);
+
         midiPort = nullptr;
+
+        std::cout
+            << "[OFFOR MIDI] Virtual MIDI port closed."
+            << std::endl;
     }
+
+    // ========================================================
+    // CLEAR QUEUE
+    // ========================================================
 
     midiFifo.reset();
-
-    if (wasOpen)
-    {
-        
-    }
 }
 
 // ==========================================================
@@ -114,7 +160,6 @@ void VirtualMidiOutput::close()
 // This function can be called from processBlock().
 //
 // It DOES NOT call virtualMIDISendData().
-//
 // It only places the MIDI event into the lock-free queue.
 // ==========================================================
 
@@ -282,7 +327,6 @@ bool VirtualMidiOutput::isOpen() const
 
 void VirtualMidiOutput::run()
 {
-    
     while (!threadShouldExit())
     {
         int start1 = 0;
@@ -301,7 +345,6 @@ void VirtualMidiOutput::run()
         {
             midiFifo.finishedRead(0);
 
-            // Do not spin at 100% CPU.
             wait(1);
 
             continue;
@@ -312,12 +355,6 @@ void VirtualMidiOutput::run()
                 static_cast<size_t>(start1)];
 
         midiFifo.finishedRead(1);
-
-        // ==================================================
-        // SEND TO VIRTUAL MIDI DRIVER
-        //
-        // This is now OFF the audio thread.
-        // ==================================================
 
         if (midiPort != nullptr)
         {
@@ -332,15 +369,13 @@ void VirtualMidiOutput::run()
                 const DWORD errorCode =
                     GetLastError();
 
-                }
+                std::cerr
+                    << "[OFFOR MIDI] "
+                    << "virtualMIDISendData FAILED. "
+                    << "GetLastError = "
+                    << errorCode
+                    << std::endl;
+            }
         }
     }
-
-    // ======================================================
-    // DRAIN REMAINING EVENTS
-    //
-    // Normally there should be little or nothing here.
-    // We deliberately do not send new MIDI after shutdown
-    // has been requested.
-    // ======================================================
 }

@@ -4,7 +4,6 @@
 #include <cmath>
 #include <iostream>
 
-
 // =============================================================
 // PARAMETER LAYOUT
 // =============================================================
@@ -281,6 +280,7 @@ OfforVocalToMidiAudioProcessor::createParameterLayout()
 
     return layout;
 }
+
 // =============================================================
 // CONSTRUCTOR
 // =============================================================
@@ -305,9 +305,164 @@ OfforVocalToMidiAudioProcessor()
         "Parameters",
         createParameterLayout())
 {
-    setVirtualMidiEnabled(true);
+    // ========================================================
+    // LICENSE REGISTRATION
+    // ========================================================
+
+    if (licenseManager.isActivated())
+    {
+        licenseAllowed.store(
+            true,
+            std::memory_order_release);
+    }
+
+    // ========================================================
+    // CREATE LICENSE WORKER
+    //
+    // IMPORTANT:
+    //
+    // The worker is created here, NOT from processBlock().
+    //
+    // processBlock() will only start the already-existing
+    // worker thread when the license check is required.
+    // ========================================================
+
+    licenseWorker =
+        std::make_unique<LicenseWorker>(*this);
 }
 
+// =============================================================
+// START LICENSE CHECK
+// =============================================================
+
+void
+OfforVocalToMidiAudioProcessor::
+startLicenseCheck()
+{
+    // ========================================================
+    // Already completed?
+    // ========================================================
+
+    if (licenseUseChecked.load(
+            std::memory_order_acquire))
+    {
+        return;
+    }
+
+
+    // ========================================================
+    // Already running?
+    // ========================================================
+
+    if (licenseCheckInProgress.exchange(
+            true,
+            std::memory_order_acq_rel))
+    {
+        return;
+    }
+
+
+    // ========================================================
+    // SAFETY
+    //
+    // The worker should have been created in the constructor.
+    //
+    // If it somehow does not exist, cancel this attempt.
+    // ========================================================
+
+    if (licenseWorker == nullptr)
+    {
+        licenseCheckInProgress.store(
+            false,
+            std::memory_order_release);
+
+        return;
+    }
+
+
+    // ========================================================
+    // START WORKER
+    // ========================================================
+
+    if (!licenseWorker->isThreadRunning())
+    {
+        licenseWorker->startThread();
+    }
+}
+
+// =============================================================
+// PERFORM LICENSE USE CHECK
+//
+// Runs ONLY on LicenseWorker.
+//
+// NEVER call this directly from processBlock().
+// =============================================================
+
+void
+OfforVocalToMidiAudioProcessor::
+performLicenseUseCheck()
+{
+    bool allowed = false;
+
+    try
+    {
+        // ====================================================
+        // REGISTER INSTALLATION
+        //
+        // This must happen before /use.
+        // ====================================================
+
+        licenseManager.registerInstallation();
+
+
+        // ====================================================
+        // CHECK / CONSUME FREE USE
+        // ====================================================
+
+        allowed =
+            licenseManager.checkUsage();
+    }
+    catch (...)
+    {
+        // ====================================================
+        // NEVER ALLOW A NETWORK EXCEPTION TO ESCAPE
+        // THE WORKER THREAD.
+        // ====================================================
+
+        allowed = false;
+    }
+
+
+    // ========================================================
+    // PUBLISH RESULT
+    //
+    // These are atomics because processBlock() reads them.
+    // ========================================================
+
+    licenseAllowed.store(
+        allowed,
+        std::memory_order_release);
+
+    licenseUseChecked.store(
+        true,
+        std::memory_order_release);
+
+
+    // ========================================================
+    // WORKER FINISHED
+    // ========================================================
+
+    licenseCheckInProgress.store(
+        false,
+        std::memory_order_release);
+}
+
+
+bool OfforVocalToMidiAudioProcessor::isLicenseCheckInProgress() const
+{
+    return licenseCheckInProgress.load(
+        std::memory_order_acquire);
+}
 
 // =============================================================
 // APPLY APVTS PARAMETERS TO DSP
@@ -610,11 +765,34 @@ OfforVocalToMidiAudioProcessor::applyPitchRangeToDSP()
 // DESTRUCTOR
 // =============================================================
 
+// =============================================================
+// DESTRUCTOR
+// =============================================================
+
 OfforVocalToMidiAudioProcessor::
 ~OfforVocalToMidiAudioProcessor()
 {
-}
+    // ========================================================
+    // STOP LICENSE WORKER
+    //
+    // This MUST happen before LicenseManager is destroyed.
+    //
+    // performLicenseUseCheck() accesses licenseManager.
+    // Therefore the worker must be completely finished before
+    // this processor continues destruction.
+    // ========================================================
 
+    if (licenseWorker != nullptr)
+    {
+        licenseWorker->stopThread(-1);
+
+        licenseWorker.reset();
+    }
+
+    // ========================================================
+    // Nothing asynchronous may still reference this processor.
+    // ========================================================
+}
 
 // =============================================================
 // BASIC PLUGIN INFORMATION
@@ -925,6 +1103,10 @@ prepareToPlay(
     atomicInputLevel.store(
         0.0f,
         std::memory_order_relaxed);
+
+    // Open virtual MIDI only when the host has
+    // actually prepared the audio processor.
+    
 }
 
 // =============================================================
@@ -935,6 +1117,11 @@ void
 OfforVocalToMidiAudioProcessor::
 releaseResources()
 {
+   
+    // ========================================================
+    // RESET DSP
+    // ========================================================
+
     pitchDetector.reset();
 
     voiceDetector.reset();
@@ -945,7 +1132,8 @@ releaseResources()
 
     monoBuffer.setSize(
         0,
-        0);
+        0
+    );
 }
 
 
@@ -1009,15 +1197,69 @@ processBlock(
 {
     juce::ScopedNoDenormals noDenormals;
 
+
+    const int numSamples =
+        buffer.getNumSamples();
+
+    const int numChannels =
+        buffer.getNumChannels();
+
+
+    // =========================================================
+    // LICENSE SESSION CHECK
+    //
+    // Start the background license check BEFORE the license
+    // gate. Otherwise a new/unverified installation would
+    // return before the check could ever start.
+    // =========================================================
+
+    if (!licenseUseChecked.load(
+            std::memory_order_acquire)
+        && !licenseCheckInProgress.load(
+            std::memory_order_acquire)
+        && numSamples > 0
+        && numChannels > 0)
+    {
+        startLicenseCheck();
+    }
+
+
+    // =========================================================
+    // LICENSE GATE
+    //
+    // Do not process audio until the background license check
+    // has completed and access has been granted.
+    // =========================================================
+
+    if (!licenseAllowed.load(
+            std::memory_order_acquire))
+    {
+        return;
+    }
+
+
+    // =========================================================
+    // SAFETY CHECK
+    // =========================================================
+
+    if (numSamples <= 0 ||
+        numChannels <= 0)
+    {
+        return;
+    }
+
+
+    if (numSamples > monoBuffer.getNumSamples())
+    {
+        return;
+    }
+
+
     applyParametersToDSP();
-    applyPitchRangeToDSP();
 
 
     // =========================================================
     // GENERATED MIDI BUFFER
-    //
-    // Keep OFFOR-generated MIDI separate from any MIDI that
-    // may already be present in the host's buffer.
     // =========================================================
 
     juce::MidiBuffer generatedMidi;
@@ -1033,48 +1275,6 @@ processBlock(
         if (generatedMidi.isEmpty())
             return;
 
-        
-        if (virtualMidiEnabled &&
-            virtualMidiOutput.isOpen())
-        {
-            for (const auto metadata : generatedMidi)
-            {
-                const auto message =
-                    metadata.getMessage();
-
-
-                if (message.isNoteOn())
-                {
-                    
-
-
-                    const bool sent =
-                        virtualMidiOutput.sendNoteOn(
-                            message.getChannel(),
-                            message.getNoteNumber(),
-                            message.getVelocity());
-
-
-                    
-                }
-                else if (message.isNoteOff())
-                {
-                    
-                    const bool sent =
-                        virtualMidiOutput.sendNoteOff(
-                            message.getChannel(),
-                            message.getNoteNumber());
-
-
-                    }
-            }
-        }
-        else
-        {
-            
-        }
-
-
         // -----------------------------------------------------
         // Preserve existing VST3 MIDI output
         // -----------------------------------------------------
@@ -1084,9 +1284,6 @@ processBlock(
             0,
             buffer.getNumSamples(),
             0);
-
-
-        
     };
 
 
@@ -1103,30 +1300,6 @@ processBlock(
             0);
 
         flushGeneratedMidi();
-    }
-
-
-    const int numSamples =
-        buffer.getNumSamples();
-
-    const int numChannels =
-        buffer.getNumChannels();
-
-
-    if (numSamples <= 0 ||
-        numChannels <= 0)
-    {
-        return;
-    }
-
-
-    // =========================================================
-    // SAFETY CHECK
-    // =========================================================
-
-    if (numSamples > monoBuffer.getNumSamples())
-    {
-        return;
     }
 
 
@@ -1257,14 +1430,8 @@ processBlock(
             confidence);
 
 
-    // =========================================================
-    // NO NEW PITCH RESULT
-    // =========================================================
-
     if (!pitchFound)
-    {
         return;
-    }
 
 
     // =========================================================
@@ -1342,26 +1509,14 @@ processBlock(
 
     if (note >= 0)
     {
-        // -----------------------------------------------------
-        // Start with stabilized vocal note.
-        // -----------------------------------------------------
-
         const int detectedNote =
             noteTracker.getCurrentNote();
 
-
-        // -----------------------------------------------------
-        // Musical processing
-        // -----------------------------------------------------
 
         const int processedNote =
             musicalProcessor.processNote(
                 detectedNote);
 
-
-        // -----------------------------------------------------
-        // Velocity
-        // -----------------------------------------------------
 
         float outputVelocity =
             velocity;
@@ -1387,10 +1542,6 @@ processBlock(
         }
 
 
-        // -----------------------------------------------------
-        // MIDI generation mode
-        // -----------------------------------------------------
-
         const int midiMode =
             static_cast<int>(
                 apvts.getRawParameterValue(
@@ -1399,10 +1550,6 @@ processBlock(
 
         switch (midiMode)
         {
-            // =================================================
-            // SINGLE NOTE
-            // =================================================
-
             case 0:
             {
                 midiGenerator.processNote(
@@ -1414,10 +1561,6 @@ processBlock(
                 break;
             }
 
-
-            // =================================================
-            // CHORD
-            // =================================================
 
             case 1:
             {
@@ -1443,13 +1586,6 @@ processBlock(
             }
 
 
-            // =================================================
-            // ARPEGGIO
-            //
-            // Not implemented yet.
-            // Safely falls back to root note.
-            // =================================================
-
             case 2:
             default:
             {
@@ -1464,16 +1600,8 @@ processBlock(
         }
 
 
-        // =====================================================
-        // SEND NEWLY GENERATED MIDI
-        // =====================================================
-
         flushGeneratedMidi();
 
-
-        // =====================================================
-        // UI SHOWS RAW DETECTED VOCAL NOTE
-        // =====================================================
 
         detectedMidiNote.store(
             note,
@@ -2284,40 +2412,67 @@ OfforVocalToMidiAudioProcessor::getMaxPitchFrequency() const
 }
 
 
-void OfforVocalToMidiAudioProcessor::setVirtualMidiEnabled(bool enabled)
+
+// =============================================================
+// LICENSING
+// =============================================================
+
+bool
+OfforVocalToMidiAudioProcessor::isLicenseActivated() const
 {
-    
-
-    virtualMidiEnabled = enabled;
-
-    if (virtualMidiEnabled)
-    {
-        
-
-        if (!virtualMidiOutput.open("OFFORVocalMIDIPot"))
-        {
-            
-
-            virtualMidiEnabled = false;
-        }
-        else
-        {
-            
-        }
-    }
-    else
-    {
-        
-
-        virtualMidiOutput.close();
-
-        
-    }
-
-    
+    return licenseManager.isActivated();
 }
 
-bool OfforVocalToMidiAudioProcessor::isVirtualMidiEnabled() const
+
+bool
+OfforVocalToMidiAudioProcessor::isLicenseAllowed() const
 {
-    return virtualMidiEnabled && virtualMidiOutput.isOpen();
+    return licenseAllowed.load(
+        std::memory_order_acquire);
+}
+
+
+int
+OfforVocalToMidiAudioProcessor::getLicenseUsageCount() const
+{
+    return licenseManager.getUsageCount();
+}
+
+
+int
+OfforVocalToMidiAudioProcessor::getLicenseFreeUsesRemaining() const
+{
+    return licenseManager.getFreeUsesRemaining();
+}
+
+
+int
+OfforVocalToMidiAudioProcessor::getLicenseFreeUsesLimit() const
+{
+    return licenseManager.getServerFreeUsesLimit();
+}
+
+
+bool
+OfforVocalToMidiAudioProcessor::activateLicense(
+    const juce::String& licenseKey)
+{
+    const bool activated =
+        licenseManager.activate(licenseKey);
+
+    if (activated)
+    {
+        licenseAllowed.store(
+            true,
+            std::memory_order_release);
+    }
+
+    return activated;
+}
+
+
+const juce::String
+OfforVocalToMidiAudioProcessor::getInstallationId() const
+{
+    return licenseManager.getInstallationId();
 }

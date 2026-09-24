@@ -1,7 +1,7 @@
 #pragma once
 
 // ==========================================================
-// OFFOR VOCAL PRO VERSION
+// OFFOR VOCAL To MIDI VERSION
 // ==========================================================
 //
 // Update the version numbers here only.
@@ -13,11 +13,11 @@
 //
 // ==========================================================
 
-#define OFFOR_VPRO_VERSION_MAJOR 1
-#define OFFOR_VPRO_VERSION_MINOR 0
-#define OFFOR_VPRO_VERSION_PATCH 0
+#define OFFOR_VOCAL_TO_MIDI_MAJOR 1
+#define OFFOR_VOCAL_TO_MIDI_MINOR 0
+#define OFFOR_VOCAL_TO_MIDI_PATCH 0
 
-#define OFFOR_VPRO_VERSION_STRING \
-    JUCE_STRINGIFY(OFFOR_VPRO_VERSION_MAJOR) "." \
-    JUCE_STRINGIFY(OFFOR_VPRO_VERSION_MINOR) "." \
-    JUCE_STRINGIFY(OFFOR_VPRO_VERSION_PATCH)
+#define OFFOR_VOCAL_TO_MIDI_VERSION_STRING \
+    JUCE_STRINGIFY(OFFOR_VOCAL_TO_MIDI_MAJOR) "." \
+    JUCE_STRINGIFY(OFFOR_VOCAL_TO_MIDI_MINOR) "." \
+    JUCE_STRINGIFY(OFFOR_VOCAL_TO_MIDI_PATCH)

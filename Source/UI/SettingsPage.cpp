@@ -1051,7 +1051,7 @@ SettingsPage::SettingsPage(
     addAndMakeVisible(versionLabel);
 
     versionLabel.setText(
-        "Version " + juce::String(OFFOR_VPRO_VERSION_STRING),
+        "Version " + juce::String(OFFOR_VOCAL_TO_MIDI_VERSION_STRING),
         juce::dontSendNotification);
 
     versionLabel.setFont(

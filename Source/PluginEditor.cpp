@@ -1,5 +1,7 @@
 #include "PluginEditor.h"
 #include "BinaryData.h"
+#include "Version.h"
+#include <iostream>
 
 #if JUCE_WINDOWS
 #include <windows.h>
@@ -27,6 +29,8 @@ OfforVocalToMidiAudioProcessorEditor(
       audioProcessor (p),
       settingsPage (p)
 {
+
+    
     setSize (700, 500);
 
     // ========================================================
@@ -72,8 +76,42 @@ OfforVocalToMidiAudioProcessorEditor(
             };
 
         addAndMakeVisible (settingsButton);
+
+
+        // ========================================================
+        // UPDATE BUTTON
+        // ========================================================
+
+        updateButton.setButtonText("UPDATE");
+
+        updateButton.setColour(
+            juce::TextButton::buttonColourId,
+            accentColour);
+
+        updateButton.setColour(
+            juce::TextButton::textColourOffId,
+            juce::Colours::white);
+
+        updateButton.setColour(
+            juce::TextButton::buttonOnColourId,
+            juce::Colour(0xffe89e81));
+
+        updateButton.setTooltip(
+            "Check for a newer version of OFFOR Vocal To MIDI");
+
+        updateButton.onClick =
+        [this]                          
+        {
+            
+            showUpdateDialog();
+        };  
+
+        updateButton.setVisible(false);
+
+        addAndMakeVisible(updateButton);
     }
 
+    
     // ========================================================
     // TITLE
     // ========================================================
@@ -114,12 +152,46 @@ OfforVocalToMidiAudioProcessorEditor(
 
     addAndMakeVisible (statusLabel);
 
+    addAndMakeVisible (licenseOverlay);
+
+    licenseOverlay.onActivate =
+        [this](const juce::String& licenseKey)
+    {
+        licenseOverlay.setStatusMessage(
+            "Activating license...");
+
+        const bool activated =
+            audioProcessor.activateLicense(licenseKey);
+
+        if (activated)
+        {
+            licenseOverlay.setStatusMessage(
+                "License activated.");
+
+            licenseOverlay.setVisible(false);
+        }
+        else
+        {
+            licenseOverlay.setStatusMessage(
+                "Invalid or rejected license key.");
+        }
+    };
+
+    licenseOverlay.onGetLicense =
+        [this]
+    {
+        juce::URL(
+            "https://ko-fi.com/s/9228915b7e")
+            .launchInDefaultBrowser();
+    };
+
+    
     // ========================================================
     // NOTE
     // ========================================================
 
     noteLabel.setText (
-        "--",
+        "C4",
         juce::dontSendNotification);
 
     noteLabel.setFont (
@@ -142,7 +214,7 @@ OfforVocalToMidiAudioProcessorEditor(
     // ========================================================
 
     frequencyLabel.setText (
-        "FREQUENCY  -- Hz",
+        "FREQUENCY  00 Hz",
         juce::dontSendNotification);
 
     frequencyLabel.setFont (
@@ -187,7 +259,7 @@ OfforVocalToMidiAudioProcessorEditor(
     // ========================================================
 
     midiLabel.setText (
-        "MIDI  --",
+        "MIDI  00",
         juce::dontSendNotification);
 
     midiLabel.setFont (
@@ -233,7 +305,170 @@ OfforVocalToMidiAudioProcessorEditor(
     showMainPage();
 
     startTimerHz (30);
+
+    if (audioProcessor.isLicenseActivated())
+    {
+        licenseOverlay.setVisible(false);
+    }
+    else if (audioProcessor.getLicenseFreeUsesRemaining() > 0)
+    {
+        // User still has free trial uses.
+        licenseOverlay.setVisible(false);
+    }
+    else
+    {
+        // Trial exhausted.
+        licenseOverlay.setTrialRemaining(0);
+        licenseOverlay.setTrialExpired(true);
+
+        licenseOverlay.setVisible(true);
+        licenseOverlay.toFront(false);
+    }
+
+    checkForUpdates();
+
 }
+
+
+void OfforVocalToMidiAudioProcessorEditor::checkForUpdates()
+{
+    
+    updateChecker.checkForUpdate(
+        OFFOR_VOCAL_TO_MIDI_VERSION_STRING,
+
+        [this](const UpdateChecker::UpdateInfo& info)
+        {
+            
+            if (!info.success)
+            {
+                
+                return;
+            }
+
+            // ==================================================
+            // STORE UPDATE INFORMATION
+            // ==================================================
+
+            latestVersion =
+                info.latestVersion;
+
+            updateDownloadUrl =
+                info.downloadUrl;
+
+            updateAvailable =
+                info.updateAvailable;
+
+            updateRequired =
+                info.minimumVersionRequired;
+
+            
+            // ==================================================
+            // SHOW UPDATE BUTTON
+            // ==================================================
+
+            if (updateAvailable || updateRequired)
+            {
+                updateButton.setButtonText(
+                    updateRequired
+                        ? "UPDATE REQUIRED"
+                        : "UPDATE AVAILABLE");
+
+                updateButton.setVisible(true);
+
+                updateButton.setTooltip(
+                    updateRequired
+                        ? "A required OFFOR Vocal To MIDI update is available"
+                        : "A new OFFOR Vocal To MIDI update is available");
+
+                resized();
+                repaint();
+
+                
+            }
+            else
+            {
+                updateButton.setVisible(false);
+
+                resized();
+                repaint();
+
+                
+            }
+        });
+}
+
+
+void OfforVocalToMidiAudioProcessorEditor::showUpdateDialog()
+{
+    
+    if (updateDownloadUrl.isEmpty())
+    {
+        
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::AlertWindow::WarningIcon,
+            "OFFOR Vocal To MIDI",
+            "The update information was received, but the download URL is missing.");
+
+        return;
+    }
+
+    if (!juce::URL::isProbablyAWebsiteURL(updateDownloadUrl))
+    {
+        
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::AlertWindow::WarningIcon,
+            "OFFOR Vocal To MIDI",
+            "The update URL is invalid:\n\n"
+            + updateDownloadUrl);
+
+        return;
+    }
+
+    const auto message =
+        "OFFOR Vocal To MIDI "
+        + juce::String(OFFOR_VOCAL_TO_MIDI_VERSION_STRING)
+        + " is installed.\n\n"
+        + "Version "
+        + latestVersion
+        + " is available."
+        + (updateRequired
+            ? "\n\nThis update is required."
+            : "");
+
+    juce::AlertWindow::showOkCancelBox(
+        juce::AlertWindow::InfoIcon,
+        "OFFOR Vocal To MIDI Update",
+        message,
+        "DOWNLOAD UPDATE",
+        "CANCEL",
+        this,
+        juce::ModalCallbackFunction::create(
+            [this](int result)
+            {
+                
+                if (result != 1)
+                {
+                    
+                    return;
+                }
+
+                
+                const bool launched =
+                    juce::URL(updateDownloadUrl)
+                        .launchInDefaultBrowser();
+
+                
+                if (!launched)
+                {
+                    juce::AlertWindow::showMessageBoxAsync(
+                        juce::AlertWindow::WarningIcon,
+                        "OFFOR Vocal To MIDI",
+                        "Windows could not open the update page.\n\n"
+                        + updateDownloadUrl);
+                }
+            }));
+}
+
 
 // ============================================================
 // DESTRUCTOR
@@ -847,7 +1082,22 @@ void OfforVocalToMidiAudioProcessorEditor::resized()
     // SETTINGS BUTTON
     // ---------------------------------------------------------
 
-    settingsButton.setBounds (
+    
+    // =========================================================
+    // UPDATE BUTTON
+    // =========================================================
+
+    updateButton.setBounds(
+        getWidth() - 175,
+        20,
+        115,
+        30);
+
+    // =========================================================
+    // SETTINGS BUTTON
+    // =========================================================
+
+    settingsButton.setBounds(
         getWidth() - 54,
         18,
         36,
@@ -906,6 +1156,11 @@ void OfforVocalToMidiAudioProcessorEditor::resized()
 
     noteDetection.setBounds (
         rightArea.reduced (8, 0));
+
+    licenseOverlay.setBounds(
+        getLocalBounds());
+
+    licenseOverlay.toFront(false);
 }
 
 // ============================================================
@@ -914,6 +1169,43 @@ void OfforVocalToMidiAudioProcessorEditor::resized()
 
 void OfforVocalToMidiAudioProcessorEditor::timerCallback()
 {
+    // ========================================================
+    // LICENSE UI
+    // ========================================================
+
+    if (audioProcessor.isLicenseCheckInProgress())
+    {
+        licenseOverlay.setVisible(true);
+        licenseOverlay.toFront(false);
+
+        licenseOverlay.setStatusMessage(
+            "Checking license...");
+    }
+    else if (audioProcessor.isLicenseActivated())
+    {
+        licenseOverlay.setVisible(false);
+    }
+    else
+    {
+        const int remaining =
+            audioProcessor.getLicenseFreeUsesRemaining();
+
+        if (remaining > 0)
+        {
+            // User still has free trial uses.
+            licenseOverlay.setVisible(false);
+        }
+        else
+        {
+            // Trial exhausted.
+            licenseOverlay.setTrialRemaining(0);
+            licenseOverlay.setTrialExpired(true);
+
+            licenseOverlay.setVisible(true);
+            licenseOverlay.toFront(false);
+        }
+    }
+
     const int midiNote =
         audioProcessor.getDetectedMidiNote();
 

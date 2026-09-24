@@ -85,6 +85,9 @@ target_sources(OfforVocalToMidi
         Source/UI/SettingsPage.cpp
         Source/UI/SettingsPage.h
 
+        Source/UI/LicenseOverlay.cpp
+        Source/UI/LicenseOverlay.h
+
         Source/UI/NoteDetectionComponent.cpp
         Source/UI/NoteDetectionComponent.h
 
@@ -94,8 +97,14 @@ target_sources(OfforVocalToMidi
         Source/Chord/ChordGenerator.h
         Source/Chord/ChordGenerator.cpp
 
-        Source/Midi/VirtualMidiOutput.cpp
-        Source/Midi/VirtualMidiOutput.h
+        # Source/Midi/VirtualMidiOutput.cpp
+        # Source/Midi/VirtualMidiOutput.h
+
+        Source/Licensing/LicenseManager.cpp
+        Source/Licensing/LicenseManager.h
+
+        Source/Update/UpdateChecker.cpp
+        Source/Update/UpdateChecker.h
 )
 
 # ============================================================
@@ -131,19 +140,19 @@ target_compile_definitions(
 # teVirtualMIDI
 # ============================================================
 
-if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-    target_include_directories(
-        OfforVocalToMidi
-        PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/teVirtualMIDI"
-    )
+# if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+#     target_include_directories(
+#         OfforVocalToMidi
+#         PRIVATE
+#             "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/teVirtualMIDI"
+#     )
 
-    target_link_libraries(
-        OfforVocalToMidi
-        PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/teVirtualMIDI/teVirtualMIDI64.lib"
-    )
-endif()
+#     target_link_libraries(
+#         OfforVocalToMidi
+#         PRIVATE
+#             "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/teVirtualMIDI/teVirtualMIDI64.lib"
+#     )
+# endif()
 
 # ============================================================
 # JUCE Modules

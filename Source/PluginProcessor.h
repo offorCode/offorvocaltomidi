@@ -8,7 +8,7 @@
 #include "MidiGenerator.h"
 #include "Chord/ChordGenerator.h"
 #include "Scales/MusicalProcessor.h"
-#include "Midi/VirtualMidiOutput.h"
+#include "Licensing/LicenseManager.h"
 
 class OfforVocalToMidiAudioProcessor
     : public juce::AudioProcessor
@@ -313,27 +313,47 @@ public:
     int getMusicalScale() const;
 
 
-    //========================================================
-    //Vitual Midi
-    //================================================================================================
 
-    void setVirtualMidiEnabled(bool enabled);
-    bool isVirtualMidiEnabled() const;
+    // =========================================================
+    // LICENSING
+    // =========================================================
+
+    bool isLicenseActivated() const;
+
+    bool isLicenseAllowed() const;
+
+    int getLicenseUsageCount() const;
+
+    int getLicenseFreeUsesRemaining() const;
+
+    int getLicenseFreeUsesLimit() const;
+
+    bool activateLicense(
+        const juce::String& licenseKey);
+
+    const juce::String getInstallationId() const;
+
+    void startLicenseCheck();
+
+    void performLicenseUseCheck();
+
+    bool isLicenseCheckInProgress() const;
+
 
 private:
 
-    // ==========================================================
+    // =========================================================
     // APVTS HELPERS
-    // ==========================================================
+    // =========================================================
 
     void applyParametersToDSP();
 
     void applyPitchRangeToDSP();
 
 
-    // ==========================================================
+    // =========================================================
     // DSP COMPONENTS
-    // ==========================================================
+    // =========================================================
 
     PitchDetector pitchDetector;
 
@@ -347,8 +367,58 @@ private:
 
     MusicalProcessor musicalProcessor;
 
-    VirtualMidiOutput virtualMidiOutput;
-    bool virtualMidiEnabled = false;
+
+    // =========================================================
+    // LICENSING
+    // =========================================================
+
+    LicenseManager licenseManager;
+
+    std::atomic<bool> licenseAllowed { false };
+
+    std::atomic<bool> licenseCheckInProgress { false };
+
+    std::atomic<bool> licenseUseChecked { false };
+
+
+    // =========================================================
+    // LICENSE WORKER
+    // =========================================================
+
+    class LicenseWorker
+        : public juce::Thread
+    {
+    public:
+
+        explicit LicenseWorker(
+            OfforVocalToMidiAudioProcessor& owner)
+            : juce::Thread(
+                "OFFOR License Worker"),
+              processor(owner)
+        {
+        }
+
+        ~LicenseWorker() override
+        {
+            stopThread(-1);
+        }
+
+    private:
+
+        void run() override
+        {
+            processor.performLicenseUseCheck();
+        }
+
+        OfforVocalToMidiAudioProcessor& processor;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(
+            LicenseWorker)
+    };
+
+
+    std::unique_ptr<LicenseWorker> licenseWorker;
+
 
 
     // ==========================================================

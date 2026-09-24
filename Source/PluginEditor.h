@@ -6,6 +6,10 @@
 #include "UI/PianoKeyPage.h"
 #include "UI/SettingsPage.h"
 #include "UI/NoteDetectionComponent.h"
+#include "UI/LicenseOverlay.h"
+
+#include "Update/UpdateChecker.h"
+#include "Version.h"
 
 class OfforVocalToMidiAudioProcessorEditor
     : public juce::AudioProcessorEditor,
@@ -56,6 +60,8 @@ private:
     PianoKeyboardComponent pianoKeyboard;
     NoteDetectionComponent noteDetection;
 
+    LicenseOverlay licenseOverlay;
+
     juce::Label titleLabel;
     juce::Label statusLabel;
     juce::Label noteLabel;
@@ -79,6 +85,24 @@ private:
     SettingsPage settingsPage;
 
     bool showingSettings = false;
+
+    UpdateChecker updateChecker;
+
+
+    // =========================================================
+    // UPDATE STATUS
+    // =========================================================
+
+    juce::TextButton updateButton;
+
+    bool updateAvailable = false;
+    bool updateRequired = false;
+
+    juce::String updateDownloadUrl;
+    juce::String latestVersion;
+
+    void checkForUpdates();
+    void showUpdateDialog();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(
         OfforVocalToMidiAudioProcessorEditor)
