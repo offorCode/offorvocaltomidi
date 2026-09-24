@@ -1093,7 +1093,7 @@ SettingsPage::SettingsPage(
         []
         {
             juce::URL (
-                "https://chechris.com/software"
+                "https://onntech.gitbook.io/onntech-docs/"
             ).launchInDefaultBrowser();
         };
 
@@ -1127,7 +1127,7 @@ SettingsPage::SettingsPage(
         []
         {
             juce::URL (
-                "https://chechris.com/software"
+                "https://www.chechris.com/contact"
             ).launchInDefaultBrowser();
         };
 
@@ -1966,7 +1966,7 @@ void SettingsPage::resized()
     // PITCH
     // =========================================================
 
-    int pitchY = 112;
+    int pitchY = 96;
 
     pitchSectionLabel.setBounds(
         labelX,
@@ -2093,7 +2093,7 @@ void SettingsPage::resized()
     // VOICE
     // =========================================================
 
-    int voiceY = 120;
+    int voiceY = 104;
 
     voiceSectionLabel.setBounds(
         labelX,
@@ -2136,7 +2136,7 @@ void SettingsPage::resized()
     // MIDI
     // =========================================================
 
-    int midiY = 120;
+    int midiY = 104;
 
     midiSectionLabel.setBounds(
         labelX,
@@ -2224,7 +2224,7 @@ void SettingsPage::resized()
     // MUSICAL
     // =========================================================
 
-    int musicalY = 112;
+    int musicalY = 98;
 
     musicalSectionLabel.setBounds(
         labelX,
@@ -2377,7 +2377,7 @@ void SettingsPage::resized()
 
     outputSectionLabel.setBounds(
         labelX,
-        120,
+        104,
         300,
         28);
 
